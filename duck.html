@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Save Me from Ducks!</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            overflow: hidden;
+            background: linear-gradient(to bottom, #ffb6c1, #ff1493); /* Light pink to dark pink gradient */
+        }
+
+        canvas {
+            display: none;
+            margin: 0 auto;
+            border: 2px solid #000;
+            background: linear-gradient(to bottom, #ffb6c1, #ff1493); /* Light pink to dark pink gradient */
+        }
+
+        #level-info {
+            display: none;
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 20px;
+            color: #fff;
+        }
+
+        #level-select {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background: linear-gradient(to bottom, #ffb6c1, #ff1493); /* Light pink to dark pink gradient */
+        }
+
+        .title {
+            font-size: 50px;
+            font-weight: bold;
+            color: white;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 5px #ff69b4;
+        }
+
+        .level-button {
+            margin: 10px;
+            padding: 10px 20px;
+            font-size: 20px;
+            background: #ff69b4;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .locked {
+            background: gray;
+            cursor: not-allowed;
+        }
+
+        #password-prompt {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+        }
+
+        .confetti-box {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none;
+            pointer-events: none;
+            text-align: center;
+            line-height: 1.5;
+            font-size: 30px;
+            color: #ff69b4;
+            background: rgba(255, 255, 255, 0.7);
+        }
+
+        .password-box {
+            display: none;
+            background: white;
+            color: black;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        .password-box h2 {
+            margin-bottom: 10px;
+        }
+
+        #countdown {
+            display: none;
+            font-size: 50px;
+            color: white;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+    </style>
+</head>
+<body>
+    <div id="level-select">
+        <div class="title">Save Us from Ducks!</div>
+        <button class="level-button" data-level="1">Level 1: You Love me</button>
+        <button class="level-button locked" data-level="2">Level 2: You Love me more</button>
+        <button class="level-button locked" data-level="3">Level 3: You Love me most</button>
+        <button class="level-button locked" data-level="4">Level 4: You Love me infinity</button>
+    </div>
+
+    <div id="password-prompt">
+        <p>Enter the password to unlock this level:</p>
+        <input type="text" id="password-input">
+        <button id="submit-password">Submit</button>
+    </div>
+
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <div id="level-info">Level: 1 | Score: 0</div>
+    <div class="confetti-box" id="confetti-box">🎉🎊🎉🎊🎉🎊<br>Congratulations!</div>
+    <div class="password-box" id="password-box">
+        <h2><span id="next-congmessage"></span></h2>
+        <p>Password for the next level: <span id="next-password"></span></p>
+    </div>
+    <div id="countdown">5</div>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const levelInfo = document.getElementById('level-info');
+        const levelSelect = document.getElementById('level-select');
+        const passwordPrompt = document.getElementById('password-prompt');
+        const confettiBox = document.getElementById('confetti-box');
+        const passwordBox = document.getElementById('password-box');
+        const congMessageSpan = document.getElementById('next-congmessage');
+        const nextPasswordSpan = document.getElementById('next-password');
+        const countdown = document.getElementById('countdown');
+
+        const passwords = ["MU_starbucks", "kiwanis", "vista"];
+        const congratulatoryMessages = ["I love you most", "I love you mostt", "I love you mosttt", "I love you Infinityy!"];
+
+        let currentLevel = 1;
+        let unlockedLevels = 1;
+        let score = 0;
+        let isGameOver = false;
+        let canCreateDucks = false;
+        const scoreThresholds = [500, 1000, 2000, 5000];
+
+        const playerImage = new Image();
+        playerImage.src = 'player.png'; // Ensure this image is in the same directory as the HTML file
+
+        const player = {
+            x: 400,
+            y: 500,
+            width: 50,
+            height: 50,
+            speed: 10 // Movement speed for arrow keys
+        };
+
+        let ducks = [];
+        let isTouching = false;
+
+        // Keyboard movement
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowLeft') {
+                player.x -= player.speed;
+            } else if (e.key === 'ArrowRight') {
+                player.x += player.speed;
+            }
+
+            // Prevent player from moving out of bounds
+            player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
+        });
+
+        // Touch movement for phones
+        canvas.addEventListener('touchstart', (e) => {
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            const touchX = touch.clientX - rect.left;
+
+            // Check if the touch is within the player's bounds
+            if (
+                touchX >= player.x &&
+                touchX <= player.x + player.width
+            ) {
+                isTouching = true;
+            }
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            if (isTouching) {
+                const touch = e.touches[0];
+                const rect = canvas.getBoundingClientRect();
+                const touchX = touch.clientX - rect.left;
+
+                player.x = touchX - player.width / 2;
+
+                // Prevent player from moving out of bounds
+                player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
+            }
+        });
+
+        canvas.addEventListener('touchend', () => {
+            isTouching = false;
+        });
+
+        function startLevel(level) {
+            levelSelect.style.display = 'none';
+            countdown.style.display = 'block';
+            canvas.style.display = 'none';
+            levelInfo.style.display = 'none';
+
+            let timeLeft = 2;
+            countdown.textContent = timeLeft;
+            const timer = setInterval(() => {
+                timeLeft -= 1;
+                countdown.textContent = timeLeft;
+                if (timeLeft === 0) {
+                    clearInterval(timer);
+                    countdown.style.display = 'none';
+                    canvas.style.display = 'block';
+                    levelInfo.style.display = 'block';
+                    currentLevel = level;
+                    score = 0;
+                    isGameOver = false;
+                    canCreateDucks = true; 
+                    gameLoop();
+                }
+            }, 1000);
+        }
+
+        document.querySelectorAll('.level-button').forEach(button => {
+            button.addEventListener('click', () => {
+                const level = parseInt(button.dataset.level);
+                if (level <= unlockedLevels) {
+                    startLevel(level);
+                } else {
+                    // Prompt for password for locked levels
+                    passwordPrompt.style.display = 'flex';
+                    const submitButton = document.getElementById('submit-password');
+                    submitButton.onclick = () => {
+                        const input = document.getElementById('password-input').value;
+                        if (input === passwords[level - 2]) {
+                            unlockedLevels = level;
+                            document.querySelector(`.level-button[data-level="${level}"]`).classList.remove('locked');
+                            document.querySelector(`.level-button[data-level="${level}"]`).style.cursor = 'pointer';
+                            passwordPrompt.style.display = 'none';
+                            alert('Level unlocked!');
+                        } else {
+                            alert('Incorrect password. Try again!');
+                        }
+                    };
+                }
+            });
+        });
+
+
+        function celebrateCompletion() {
+            confettiBox.style.display = 'block';
+            setTimeout(() => {
+                confettiBox.style.display = 'none';
+                passwordBox.style.display = 'block';
+                nextPasswordSpan.textContent = passwords[currentLevel - 1] || "N/A";
+                congMessageSpan.textContent = congratulatoryMessages[currentLevel - 1] || "N/A";
+            }, 2000);
+        }
+
+        function gameLoop() {
+            if (isGameOver) {
+                ctx.fillStyle = 'black';
+                ctx.font = '40px Arial';
+                ctx.fillText('Game Over!', canvas.width / 2 - 100, canvas.height / 2);
+                return;
+            }
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawPlayer();
+            drawDucks();
+            moveDucks();
+            detectCollision();
+
+            if (score >= scoreThresholds[currentLevel - 1]) {
+                celebrateCompletion();
+                return;
+            }
+
+            updateScore();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function createDucks() {
+            if (canCreateDucks) {
+                for (let i = 0; i < 5; i++) {
+                    const size = Math.random() * 30 + 20;
+                    ducks.push({
+                        x: Math.random() * (canvas.width - size),
+                        y: -size,
+                        width: size,
+                        height: size,
+                        speed: Math.random() * 2 + 1,
+                        emoji: '🦆'
+                    });
+                }
+            }
+        }
+
+        function drawPlayer() {
+            ctx.drawImage(playerImage, player.x, player.y, player.width, player.height);
+        }
+
+        function drawDucks() {
+            ducks.forEach(duck => {
+                ctx.font = `${duck.width}px Arial`;
+                ctx.fillText(duck.emoji, duck.x, duck.y);
+            });
+        }
+
+        function moveDucks() {
+            ducks.forEach(duck => {
+                duck.y += duck.speed;
+            });
+
+            ducks = ducks.filter(duck => duck.y < canvas.height);
+        }
+
+        function detectCollision() {
+            ducks.forEach(duck => {
+                if (
+                    player.x < duck.x + duck.width &&
+                    player.x + player.width > duck.x &&
+                    player.y < duck.y + duck.height &&
+                    player.y + player.height > duck.y
+                ) {
+                    isGameOver = true;
+                }
+            });
+        }
+
+        function updateScore() {
+            score += 1;
+            levelInfo.textContent = `Level: ${currentLevel} | Score: ${score}`;
+        }
+
+        setInterval(createDucks, 2000); // Drop 10 ducks every 5 seconds
+    </script>
+</body>
+</html>
